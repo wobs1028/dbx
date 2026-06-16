@@ -32,6 +32,7 @@ pub const JDBC_PLUGIN_NOT_INSTALLED: &str =
     "JDBC plugin is not installed. Install the optional JDBC plugin to use this connection.";
 const DEFAULT_AGENT_CONNECT_TIMEOUT_SECS: u64 = 30;
 const ACCESS_AGENT_CONNECT_TIMEOUT_SECS: u64 = 30;
+const POOL_CLOSE_TIMEOUT_SECS: u64 = 5;
 
 #[cfg(feature = "duckdb-bundled")]
 mod duckdb_types {
@@ -1061,6 +1062,16 @@ impl AppState {
     }
 
     pub async fn remove_connection_pools(&self, connection_id: &str) {
+        let removed = self.drain_connection_pools(connection_id).await;
+        close_removed_pools(removed).await;
+    }
+
+    pub async fn remove_connection_pools_detached(&self, connection_id: &str) {
+        let removed = self.drain_connection_pools(connection_id).await;
+        close_removed_pools_in_background(removed);
+    }
+
+    async fn drain_connection_pools(&self, connection_id: &str) -> Vec<(String, PoolKind)> {
         let pool_prefix = format!("{connection_id}:");
         let keys_to_remove: Vec<String> = self
             .connections
@@ -1075,13 +1086,10 @@ impl AppState {
         let mut removed = Vec::with_capacity(keys_to_remove.len());
         for key in keys_to_remove {
             if let Some(pool) = conns.remove(&key) {
-                removed.push(pool);
+                removed.push((key, pool));
             }
         }
-        drop(conns);
-        for pool in removed {
-            close_pool_kind(pool).await;
-        }
+        removed
     }
 
     async fn uses_forwarded_transport(&self, connection_id: &str) -> bool {
@@ -1234,6 +1242,30 @@ pub async fn close_pool_kind(pool: PoolKind) {
         }
         PoolKind::ExternalTabular(_) => {}
         PoolKind::ExternalDriver { .. } => {}
+    }
+}
+
+async fn close_removed_pools(removed: Vec<(String, PoolKind)>) {
+    for (pool_key, pool) in removed {
+        close_pool_kind_with_timeout(pool_key, pool).await;
+    }
+}
+
+fn close_removed_pools_in_background(removed: Vec<(String, PoolKind)>) {
+    if removed.is_empty() {
+        return;
+    }
+    tokio::spawn(async move {
+        close_removed_pools(removed).await;
+    });
+}
+
+async fn close_pool_kind_with_timeout(pool_key: String, pool: PoolKind) {
+    match tokio::time::timeout(Duration::from_secs(POOL_CLOSE_TIMEOUT_SECS), close_pool_kind(pool)).await {
+        Ok(()) => {}
+        Err(_) => log::warn!(
+            "Timed out closing connection pool '{pool_key}' after {POOL_CLOSE_TIMEOUT_SECS}s; cleanup will continue by dropping the pool handle."
+        ),
     }
 }
 

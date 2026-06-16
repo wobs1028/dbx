@@ -734,7 +734,7 @@ pub async fn connection_final_proxy_port(
 
 #[tauri::command]
 pub async fn disconnect_db(state: State<'_, Arc<AppState>>, connection_id: String) -> Result<(), String> {
-    state.remove_connection_pools(&connection_id).await;
+    state.remove_connection_pools_detached(&connection_id).await;
     state.reset_connection_transport(&connection_id).await;
     if connection_id.starts_with("__visible_draft_") {
         state.configs.write().await.remove(&connection_id);
