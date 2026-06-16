@@ -3956,12 +3956,6 @@ const canvasEditingCell = computed(() => {
   return { rowIndex, visibleColIdx, actualColIdx: editing.col, rect };
 });
 
-const canvasEditingCellIsNumeric = computed(() => {
-  const cell = canvasEditingCell.value;
-  if (!cell) return false;
-  return typeof displayItemAt(cell.rowIndex)?.data[cell.actualColIdx] === "number";
-});
-
 const canvasSingleSelectedCell = computed(() => {
   const range = selectedRange.value;
   if (!range || range.startRow !== range.endRow || range.startCol !== range.endCol) return null;
