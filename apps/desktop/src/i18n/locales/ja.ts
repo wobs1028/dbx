@@ -433,6 +433,13 @@ export default {
       close: "閉じる (Esc)",
       noResults: "結果なし",
     },
+    executionPicker: {
+      title: "Execution Target",
+      currentStatement: "Current SQL",
+      allStatements: "All SQL",
+      currentCommand: "Current command",
+      allCommands: "All commands",
+    },
   },
   tabs: {
     sql: "SQL",

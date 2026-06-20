@@ -413,6 +413,13 @@ export default {
       close: "關閉 (Esc)",
       noResults: "無結果",
     },
+    executionPicker: {
+      title: "執行目標",
+      currentStatement: "當前 SQL",
+      allStatements: "全部 SQL",
+      currentCommand: "目前命令",
+      allCommands: "全部命令",
+    },
   },
   tabs: {
     sql: "SQL",

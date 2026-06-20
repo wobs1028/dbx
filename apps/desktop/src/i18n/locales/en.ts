@@ -434,6 +434,13 @@ export default {
       close: "Close (Esc)",
       noResults: "No results",
     },
+    executionPicker: {
+      title: "Execution Target",
+      currentStatement: "Current SQL",
+      allStatements: "All SQL",
+      currentCommand: "Current command",
+      allCommands: "All commands",
+    },
   },
   tabs: {
     sql: "SQL",

@@ -517,7 +517,11 @@ function handleModRTarget(target: Element): boolean {
   return false;
 }
 
-defineExpose({ focusSearch, refreshData, handleModRTarget });
+function requestQueryEditorExecute() {
+  return queryEditorRef.value?.requestExecute();
+}
+
+defineExpose({ focusSearch, refreshData, handleModRTarget, requestQueryEditorExecute });
 </script>
 
 <template>
