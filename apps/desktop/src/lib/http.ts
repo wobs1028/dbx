@@ -1,4 +1,4 @@
-﻿import type {
+import type {
   ConnectionConfig,
   DatabaseInfo,
   LinkedServerInfo,
@@ -104,6 +104,8 @@ const DESKTOP_SETTINGS_STORAGE_KEY = "dbx-desktop-settings";
 const DEFAULT_DESKTOP_SETTINGS: DesktopSettings = {
   show_tray_icon: true,
   icon_theme: "default",
+  quit_on_close: false,
+  close_action_prompted: false,
   debug_logging_enabled: false,
   saved_sql_sync_dir: null,
   driver_store_dir: null,
