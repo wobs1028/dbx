@@ -376,7 +376,7 @@ pub async fn connect_with_ca_cert(
     ca_cert_path: Option<&str>,
     fallback_timeout: Duration,
 ) -> Result<MySqlPool, String> {
-    connect_with_ca_cert_and_pool_limit(url, ca_cert_path, fallback_timeout, 3).await
+    connect_with_ca_cert_and_pool_limit(url, ca_cert_path, fallback_timeout, 10).await
 }
 
 pub async fn connect_with_ca_cert_and_pool_limit(

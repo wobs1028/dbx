@@ -590,7 +590,7 @@ pub async fn connect(url: &str, fallback_timeout: Duration) -> Result<Pool, Stri
             mgr_config,
         );
         let pool = Pool::builder(mgr)
-            .max_size(4)
+            .max_size(10)
             .runtime(Runtime::Tokio1)
             .wait_timeout(Some(timeout))
             .build()
