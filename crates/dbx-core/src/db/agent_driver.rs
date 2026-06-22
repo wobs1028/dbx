@@ -722,8 +722,24 @@ impl AgentDriverClient {
         if let Err(e) = self.child.kill() {
             log::warn!("Failed to kill agent process: {e}");
         }
-        // Reap the child to avoid zombie processes
-        let _ = self.child.wait();
+        // Reap the child to avoid zombie processes.
+        // Use try_wait() with a timeout instead of blocking wait() to avoid
+        // hanging in Drop during async cleanup. Poll up to 100ms for the
+        // process to exit after kill().
+        for _ in 0..10 {
+            match self.child.try_wait() {
+                Ok(Some(_status)) => return,
+                Ok(None) => std::thread::sleep(Duration::from_millis(10)),
+                Err(e) => {
+                    log::warn!("Failed to wait for agent process: {e}");
+                    return;
+                }
+            }
+        }
+        // Final blocking wait as a last resort
+        if let Err(e) = self.child.wait() {
+            log::warn!("Final wait failed for agent process: {e}");
+        }
     }
 
     pub fn pid(&self) -> u32 {
