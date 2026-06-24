@@ -1572,6 +1572,59 @@ test("jdbc query pagination uses result sessions without capping max rows to one
   }
 });
 
+test("mongo aggregate execution uses editor page size when pagination plan has no limit", async () => {
+  const restoreStorage = installMemoryStorage();
+  setActivePinia(createPinia());
+  const connectionStore = useConnectionStore();
+  const settingsStore = useSettingsStore();
+  const store = useQueryStore();
+  const originalFetch = globalThis.fetch;
+  let aggregateBody: any;
+
+  settingsStore.updateEditorSettings({ pageSize: 1000 });
+  connectionStore.addEphemeralConnection({
+    ...conn("mongo-1"),
+    db_type: "mongodb",
+    port: 27017,
+  });
+
+  globalThis.fetch = withConnectionHealthMock(async (input, init) => {
+    const url = String(input);
+    if (url === "/api/query/prepare-pagination-plan") {
+      const body = JSON.parse(String(init?.body ?? "{}"));
+      return new Response(JSON.stringify({ sqlToExecute: body.options.sql, useAgentResultSession: false }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    if (url === "/api/mongo/aggregate-documents") {
+      aggregateBody = JSON.parse(String(init?.body ?? "{}"));
+      return new Response(
+        JSON.stringify({
+          documents: Array.from({ length: 811 }, (_, index) => ({ line: index + 1 })),
+          total: 811,
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }
+    return new Response("unexpected request", { status: 500 });
+  });
+
+  try {
+    const tabId = store.createTab("mongo-1", "accounting", "Query", "query", "");
+    await store.executeTabSql(tabId, 'db.getCollection("accounting_reconciliations").aggregate([{ "$match": {} }])');
+    const tab = store.tabs.find((item) => item.id === tabId);
+
+    assert.equal(aggregateBody.maxRows, 1000);
+    assert.equal(aggregateBody.collection, "accounting_reconciliations");
+    assert.equal(tab?.result?.rows.length, 811);
+    assert.equal(tab?.result?.truncated, false);
+  } finally {
+    globalThis.fetch = originalFetch;
+    restoreStorage();
+  }
+});
+
 test("table data export fetches every filtered page", async () => {
   const restoreStorage = installMemoryStorage();
   setActivePinia(createPinia());
