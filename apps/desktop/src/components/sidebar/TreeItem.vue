@@ -897,6 +897,8 @@ async function openData() {
         existing.resultSortColumn = undefined;
         existing.resultSortColumnIndex = undefined;
         existing.resultSortDirection = undefined;
+        existing.resultSortMode = undefined;
+        existing.resultLocalSortOriginalRows = undefined;
         existing.resultSortedSql = undefined;
         queryStore.activeTabId = existing.id;
         return existing.id;

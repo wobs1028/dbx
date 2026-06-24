@@ -60,6 +60,7 @@ import {
   PanelBottom,
   PanelRight,
   TableProperties,
+  Database,
 } from "@lucide/vue";
 import { Button } from "@/components/ui/button";
 import QueryLoadingState from "@/components/common/QueryLoadingState.vue";
@@ -139,7 +140,7 @@ import { useCellDetailEditor, type UseCellDetailEditorReturn } from "@/composabl
 import { useTheme } from "@/composables/useTheme";
 import { useConnectionStore } from "@/stores/connectionStore";
 import { useSettingsStore } from "@/stores/settingsStore";
-import type { DataGridSortDirection } from "@/lib/dataGridSort";
+import type { DataGridSortDirection, DataGridSortMode } from "@/lib/dataGridSort";
 import { getTableMetadataCapabilities } from "@/lib/tableMetadataCapabilities";
 import { forgetDataGridConditionHistory, loadDataGridConditionHistory, rememberDataGridConditionHistory } from "@/lib/dataGridConditionHistory";
 import { caretPositionInsideInsertedSqlSingleQuotes, insertedSqlSingleQuoteAtCaret } from "@/lib/sqlQuoteCaret";
@@ -173,7 +174,7 @@ type ConditionSuggestion = {
   kind: "column" | "history";
 };
 
-type SortMenuValue = "asc" | "desc" | "clear";
+type SortMenuValue = "local-asc" | "local-desc" | "database-asc" | "database-desc" | "clear";
 
 const props = defineProps<{
   result: QueryResult;
@@ -190,6 +191,7 @@ const props = defineProps<{
   sortColumn?: string;
   sortColumnIndex?: number;
   sortDirection?: DataGridSortDirection;
+  sortMode?: DataGridSortMode;
   tableMeta?: {
     schema?: string;
     tableName: string;
@@ -217,7 +219,7 @@ const dataGridElapsed = () => `${Math.round(performance.now() - dataGridCreatedA
 const emit = defineEmits<{
   reload: [sql?: string, searchText?: string, whereInput?: string, orderBy?: string, limit?: number, offset?: number];
   paginate: [offset: number, limit: number, whereInput?: string, orderBy?: string];
-  sort: [column: string, columnIndex: number, direction: "asc" | "desc" | null, whereInput?: string];
+  sort: [column: string, columnIndex: number, direction: "asc" | "desc" | null, whereInput?: string, mode?: DataGridSortMode];
   "update:whereInput": [value: string];
   "update:orderByInput": [value: string];
 }>();
@@ -354,16 +356,29 @@ function columnIsSorted(column: string, columnIndex: number): boolean {
 function sortMenuItems(column: string, columnIndex: number) {
   return [
     {
-      label: t("grid.sortAscending"),
-      value: "asc",
+      label: t("grid.sortCurrentPageAscending"),
+      value: "local-asc",
       icon: ArrowUp,
-      checked: columnIsSorted(column, columnIndex) && sortDir.value === "asc",
+      checked: columnIsSorted(column, columnIndex) && sortDir.value === "asc" && sortMode.value === "local",
     },
     {
-      label: t("grid.sortDescending"),
-      value: "desc",
+      label: t("grid.sortCurrentPageDescending"),
+      value: "local-desc",
       icon: ArrowDown,
-      checked: columnIsSorted(column, columnIndex) && sortDir.value === "desc",
+      checked: columnIsSorted(column, columnIndex) && sortDir.value === "desc" && sortMode.value === "local",
+    },
+    {
+      label: t("grid.sortDatabaseAscending"),
+      value: "database-asc",
+      icon: Database,
+      checked: columnIsSorted(column, columnIndex) && sortDir.value === "asc" && sortMode.value === "database",
+      separatorBefore: true,
+    },
+    {
+      label: t("grid.sortDatabaseDescending"),
+      value: "database-desc",
+      icon: Database,
+      checked: columnIsSorted(column, columnIndex) && sortDir.value === "desc" && sortMode.value === "database",
     },
     {
       label: t("grid.clearSort"),
@@ -376,7 +391,7 @@ function sortMenuItems(column: string, columnIndex: number) {
 }
 
 function selectedSortMenuValue(column: string, columnIndex: number): SortMenuValue | undefined {
-  return columnIsSorted(column, columnIndex) ? sortDir.value : undefined;
+  return columnIsSorted(column, columnIndex) ? (`${sortMode.value}-${sortDir.value}` as SortMenuValue) : undefined;
 }
 
 function typeColorClass(t: string): string {
@@ -429,6 +444,7 @@ const transposeViewportWidth = ref(0);
 const sortCol = ref<string | null>(null);
 const sortColIndex = ref<number | null>(null);
 const sortDir = ref<DataGridSortDirection>("asc");
+const sortMode = ref<DataGridSortMode>("database");
 const searchText = ref("");
 const deferredClientSearchText = ref("");
 const searchOverlayVisible = ref(false);
@@ -2454,14 +2470,15 @@ function syncOrderByInputWithSort(column: string | null, direction: "asc" | "des
 }
 
 watch(
-  () => [props.sortColumn, props.sortColumnIndex, props.sortDirection] as const,
-  ([column, columnIndex, direction], previous) => {
+  () => [props.sortColumn, props.sortColumnIndex, props.sortDirection, props.sortMode] as const,
+  ([column, columnIndex, direction, mode], previous) => {
     const wasControlledSort = !!previous?.[0] && !!previous?.[2];
     const isControlledSort = !!column && !!direction;
     sortCol.value = column && direction ? column : null;
     sortColIndex.value = typeof columnIndex === "number" && direction ? columnIndex : null;
     sortDir.value = direction ?? "asc";
-    if (isControlledSort) {
+    sortMode.value = mode ?? "database";
+    if (isControlledSort && sortMode.value === "database") {
       syncOrderByInputWithSort(sortCol.value, sortDir.value);
     } else if (wasControlledSort) {
       syncOrderByInputWithSort(null, null);
@@ -3740,7 +3757,7 @@ function setDetailNull() {
   detailCell.value = { ...detailCell.value! };
 }
 
-function applyColumnSort(column: string, columnIndex: number, direction: "asc" | "desc" | null) {
+function applyColumnSort(column: string, columnIndex: number, direction: "asc" | "desc" | null, mode: DataGridSortMode = "database") {
   if (getIsResizing()) return;
   currentPage.value = 1;
   resetGridVerticalScroll(true);
@@ -3748,23 +3765,34 @@ function applyColumnSort(column: string, columnIndex: number, direction: "asc" |
     sortCol.value = column;
     sortColIndex.value = columnIndex;
     sortDir.value = direction;
-    syncOrderByInputWithSort(column, direction);
+    sortMode.value = mode;
+    if (mode === "database") {
+      syncOrderByInputWithSort(column, direction);
+    } else {
+      syncOrderByInputWithSort(null, null);
+    }
   } else {
     sortCol.value = null;
     sortColIndex.value = null;
     sortDir.value = "asc";
+    sortMode.value = "database";
     syncOrderByInputWithSort(null, null);
   }
-  emit("sort", column, columnIndex, direction, currentWhereInput());
+  emit("sort", column, columnIndex, direction, currentWhereInput(), mode);
 }
 
 function selectHeaderSort(value: string, column: string, columnIndex: number) {
-  applyColumnSort(column, columnIndex, value === "clear" ? null : (value as DataGridSortDirection));
+  if (value === "clear") {
+    applyColumnSort(column, columnIndex, null, sortMode.value);
+    return;
+  }
+  const [mode, direction] = value.split("-") as [DataGridSortMode, DataGridSortDirection];
+  applyColumnSort(column, columnIndex, direction, mode);
 }
 
-function applyContextSort(direction: "asc" | "desc" | null) {
+function applyContextSort(direction: "asc" | "desc" | null, mode: DataGridSortMode = "database") {
   if (!contextColumn.value || !contextCell.value) return;
-  applyColumnSort(contextColumn.value, contextCell.value.col, direction);
+  applyColumnSort(contextColumn.value, contextCell.value.col, direction, mode);
 }
 
 async function contextFilterCondition(mode: FilterMode): Promise<string | null> {
@@ -6366,9 +6394,15 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
 
   // 2. Column sort & filter
   if (contextColumn.value) {
-    items.push({ label: t("grid.sortAscending"), action: () => applyContextSort("asc"), icon: ArrowUp }, { label: t("grid.sortDescending"), action: () => applyContextSort("desc"), icon: ArrowDown });
+    items.push(
+      { label: t("grid.sortCurrentPageAscending"), action: () => applyContextSort("asc", "local"), icon: ArrowUp },
+      { label: t("grid.sortCurrentPageDescending"), action: () => applyContextSort("desc", "local"), icon: ArrowDown },
+      { label: "", separator: true },
+      { label: t("grid.sortDatabaseAscending"), action: () => applyContextSort("asc", "database"), icon: Database },
+      { label: t("grid.sortDatabaseDescending"), action: () => applyContextSort("desc", "database"), icon: Database },
+    );
     if (sortCol.value) {
-      items.push({ label: t("grid.clearSort"), action: () => applyContextSort(null), icon: ArrowUpDown });
+      items.push({ label: t("grid.clearSort"), action: () => applyContextSort(null, sortMode.value), icon: ArrowUpDown });
     }
     if (canUseWhereSearch.value) {
       items.push({ label: "", separator: true });

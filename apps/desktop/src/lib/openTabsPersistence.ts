@@ -26,6 +26,7 @@ export interface SavedOpenTab {
   resultSortColumn?: string;
   resultSortColumnIndex?: number;
   resultSortDirection?: QueryTab["resultSortDirection"];
+  resultSortMode?: QueryTab["resultSortMode"];
   orderByInput?: string;
   resultPageLimit?: number;
   resultPageOffset?: number;
@@ -67,6 +68,7 @@ export function serializeOpenTabs(tabs: QueryTab[]): SavedOpenTab[] {
     ...(tab.resultSortColumn !== undefined ? { resultSortColumn: tab.resultSortColumn } : {}),
     ...(tab.resultSortColumnIndex !== undefined ? { resultSortColumnIndex: tab.resultSortColumnIndex } : {}),
     ...(tab.resultSortDirection !== undefined ? { resultSortDirection: tab.resultSortDirection } : {}),
+    ...(tab.resultSortMode !== undefined ? { resultSortMode: tab.resultSortMode } : {}),
     ...(tab.orderByInput !== undefined ? { orderByInput: tab.orderByInput } : {}),
     ...(tab.resultPageLimit !== undefined ? { resultPageLimit: tab.resultPageLimit } : {}),
     ...(tab.resultPageOffset !== undefined ? { resultPageOffset: tab.resultPageOffset } : {}),

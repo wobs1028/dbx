@@ -401,6 +401,8 @@ export interface QueryResultRun {
   resultSortColumn?: string;
   resultSortColumnIndex?: number;
   resultSortDirection?: "asc" | "desc";
+  resultSortMode?: "database" | "local";
+  resultLocalSortOriginalRows?: QueryResult["rows"];
   orderByInput?: string;
   resultPageSql?: string;
   resultPageLimit?: number;
@@ -559,6 +561,8 @@ export interface QueryTab {
   resultSortColumn?: string;
   resultSortColumnIndex?: number;
   resultSortDirection?: "asc" | "desc";
+  resultSortMode?: "database" | "local";
+  resultLocalSortOriginalRows?: QueryResult["rows"];
   orderByInput?: string;
   resultPageSql?: string;
   resultPageLimit?: number;

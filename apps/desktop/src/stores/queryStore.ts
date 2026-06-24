@@ -34,6 +34,7 @@ import { tableMetaForDataTab } from "@/lib/tableDataTabMeta";
 import { quoteTableIdentifier } from "@/lib/tableSelectSql";
 import { connectionUsesDatabaseObjectTreeMode, connectionUsesSchemaExecutionContext, effectiveDatabaseTypeForConnection } from "@/lib/jdbcDialect";
 import { queryTimeoutSecsForConnection } from "@/lib/queryTimeout";
+import { sortDataGridRows, type DataGridSortDirection } from "@/lib/dataGridSort";
 import { clearDataGridPendingSnapshotsForTab } from "@/composables/useDataGridEditor";
 import { buildTabResultSnapshot, deleteTabResultSnapshot, readTabResultSnapshot, tabResultCacheKey, writeTabResultSnapshot } from "@/lib/tabResultCache";
 import { decodeQueryResultArchive, encodeQueryResultArchive, type DecodedQueryResultArchive } from "@/lib/queryResultArchive";
@@ -202,6 +203,8 @@ export const useQueryStore = defineStore("query", () => {
     tab.result = undefined;
     tab.results = undefined;
     tab.activeResultIndex = undefined;
+    tab.resultLocalSortOriginalRows = undefined;
+    tab.resultSortMode = undefined;
     tab.resultSessionId = undefined;
     tab.resultAccessedAt = undefined;
     tab.queryAnalysis = undefined;
@@ -233,6 +236,8 @@ export const useQueryStore = defineStore("query", () => {
     tab.resultSortColumn = run.resultSortColumn;
     tab.resultSortColumnIndex = run.resultSortColumnIndex;
     tab.resultSortDirection = run.resultSortDirection;
+    tab.resultSortMode = run.resultSortMode;
+    tab.resultLocalSortOriginalRows = undefined;
     tab.orderByInput = run.orderByInput;
     tab.resultPageSql = run.resultPageSql;
     tab.resultPageLimit = run.resultPageLimit;
@@ -351,6 +356,7 @@ export const useQueryStore = defineStore("query", () => {
       resultSortColumn: tab.resultSortColumn,
       resultSortColumnIndex: tab.resultSortColumnIndex,
       resultSortDirection: tab.resultSortDirection,
+      resultSortMode: tab.resultSortMode,
       orderByInput: tab.orderByInput,
       resultPageSql: tab.resultPageSql,
       resultPageLimit: tab.resultPageLimit,
@@ -397,6 +403,7 @@ export const useQueryStore = defineStore("query", () => {
       resultSortColumn: tab.resultSortColumn,
       resultSortColumnIndex: tab.resultSortColumnIndex,
       resultSortDirection: tab.resultSortDirection,
+      resultSortMode: tab.resultSortMode,
       orderByInput: tab.orderByInput,
       resultPageSql: tab.resultPageSql,
       resultPageLimit: tab.resultPageLimit,
@@ -425,6 +432,38 @@ export const useQueryStore = defineStore("query", () => {
     } else if (tab.resultAutoSave) {
       captureDisplayedResultRun(tab, sql);
     }
+  }
+
+  function assignDisplayedResult(tab: QueryTab, result: QueryResult) {
+    tab.result = markQueryResultRowsRaw(result);
+    if (tab.results?.length) {
+      const activeIndex = tab.activeResultIndex ?? 0;
+      if (activeIndex >= 0 && activeIndex < tab.results.length) {
+        tab.results[activeIndex] = tab.result;
+      }
+    }
+  }
+
+  function sortTabResultLocally(id: string, column: string, columnIndex: number, direction: DataGridSortDirection | null) {
+    const tab = tabs.value.find((t) => t.id === id);
+    if (!tab?.result) return;
+
+    if (!tab.resultLocalSortOriginalRows) {
+      tab.resultLocalSortOriginalRows = tab.result.rows.slice();
+    }
+
+    const rows = direction ? sortDataGridRows(tab.resultLocalSortOriginalRows, columnIndex, direction) : tab.resultLocalSortOriginalRows;
+    assignDisplayedResult(tab, { ...tab.result, rows });
+
+    tab.resultSortColumn = direction ? column : undefined;
+    tab.resultSortColumnIndex = direction ? columnIndex : undefined;
+    tab.resultSortDirection = direction ?? undefined;
+    tab.resultSortMode = direction ? "local" : undefined;
+    tab.resultSortedSql = undefined;
+    if (!direction) tab.resultLocalSortOriginalRows = undefined;
+
+    touchResult(tab);
+    syncDisplayedResultRun(tab, tab.resultBaseSql ?? tab.lastExecutedSql ?? tab.sql);
   }
 
   function resultRunHasPayload(run: NonNullable<QueryTab["resultRuns"]>[number]): boolean {
@@ -459,6 +498,7 @@ export const useQueryStore = defineStore("query", () => {
       resultSortColumn: t.resultSortColumn,
       resultSortColumnIndex: t.resultSortColumnIndex,
       resultSortDirection: t.resultSortDirection,
+      resultSortMode: t.resultSortMode,
       orderByInput: t.orderByInput,
       resultPageLimit: t.resultPageLimit,
       resultPageOffset: t.resultPageOffset,
@@ -771,6 +811,8 @@ export const useQueryStore = defineStore("query", () => {
       resultSortColumn: undefined,
       resultSortColumnIndex: undefined,
       resultSortDirection: undefined,
+      resultSortMode: undefined,
+      resultLocalSortOriginalRows: undefined,
       orderByInput: undefined,
       resultPageSql: undefined,
       resultPageLimit: undefined,
@@ -1312,6 +1354,7 @@ export const useQueryStore = defineStore("query", () => {
     }
     tab.executionId = executionId;
     tab.lastExecutedSql = sql;
+    tab.resultLocalSortOriginalRows = undefined;
     const updateActiveResultRun = !!tab.activeResultRunId && options?.preserveResultDuringExecution === true;
     if (!updateActiveResultRun) {
       tab.activeResultRunId = undefined;
@@ -1919,6 +1962,11 @@ export const useQueryStore = defineStore("query", () => {
     if (!tab?.results || index < 0 || index >= tab.results.length) return;
     tab.activeResultIndex = index;
     tab.result = tab.results[index];
+    tab.resultLocalSortOriginalRows = undefined;
+    tab.resultSortColumn = undefined;
+    tab.resultSortColumnIndex = undefined;
+    tab.resultSortDirection = undefined;
+    tab.resultSortMode = undefined;
     touchResult(tab);
     tab.queryAnalysis = undefined;
     tab.querySourceColumns = undefined;
@@ -2245,6 +2293,7 @@ export const useQueryStore = defineStore("query", () => {
     executeCurrentTab,
     executeCurrentSql,
     executeTabSql,
+    sortTabResultLocally,
     explainTabSql,
     cancelTabExecution,
     cancelTabExplain,

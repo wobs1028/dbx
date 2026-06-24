@@ -58,6 +58,7 @@ import { formatShortcut } from "@/lib/shortcutRegistry";
 import { effectiveDatabaseTypeForConnection } from "@/lib/jdbcDialect";
 import { chartableColumnIndexes } from "@/lib/chartData";
 import type { SqlExecutionOverride } from "@/lib/sqlExecutionTarget";
+import type { DataGridSortMode } from "@/lib/dataGridSort";
 import { useTabScroll } from "@/composables/useTabScroll";
 import type { QueryTab, ConnectionConfig, TableInfoTab } from "@/types/database";
 import type { SqlFormatDialect } from "@/lib/sqlFormatter";
@@ -119,7 +120,7 @@ const emit = defineEmits<{
   formatError: [];
   reload: [sql?: string, searchText?: string, whereInput?: string, orderBy?: string, limit?: number, offset?: number];
   paginate: [offset: number, limit: number, whereInput?: string, orderBy?: string];
-  sort: [column: string, columnIndex: number, direction: "asc" | "desc" | null, whereInput?: string];
+  sort: [column: string, columnIndex: number, direction: "asc" | "desc" | null, whereInput?: string, mode?: DataGridSortMode];
   executeSql: [sql: string];
   clickTable: [tableName: string];
   viewTableData: [tableName: string];
@@ -764,6 +765,7 @@ defineExpose({ focusSearch, refreshData, handleModRTarget, requestQueryEditorExe
                 :sort-column="activeTab.resultSortColumn"
                 :sort-column-index="activeTab.resultSortColumnIndex"
                 :sort-direction="activeTab.resultSortDirection"
+                :sort-mode="activeTab.resultSortMode"
                 :initial-order-by-input="activeTab.orderByInput"
                 :sql="activeTab.lastExecutedSql || activeTab.sql"
                 :loading="activeTab.isExecuting"
@@ -787,7 +789,7 @@ defineExpose({ focusSearch, refreshData, handleModRTarget, requestQueryEditorExe
                 @update:order-by-input="(v: string) => (activeTab.orderByInput = v)"
                 @reload="(sql?: string, searchText?: string, whereInput?: string, orderBy?: string, limit?: number, offset?: number) => emit('reload', sql, searchText, whereInput, orderBy, limit, offset)"
                 @paginate="(offset: number, limit: number, whereInput?: string, orderBy?: string) => emit('paginate', offset, limit, whereInput, orderBy)"
-                @sort="(column: string, columnIndex: number, direction: 'asc' | 'desc' | null, whereInput?: string) => emit('sort', column, columnIndex, direction, whereInput)"
+                @sort="(column: string, columnIndex: number, direction: 'asc' | 'desc' | null, whereInput?: string, mode?: DataGridSortMode) => emit('sort', column, columnIndex, direction, whereInput, mode)"
               >
                 <template v-if="activeTab.result?.columns.includes('Error')" #error-actions="{ errorMessage }">
                   <Button variant="outline" size="sm" class="h-7 gap-1.5 px-2.5 text-xs" @click="emit('fixWithAi', String(errorMessage))">
@@ -959,6 +961,7 @@ defineExpose({ focusSearch, refreshData, handleModRTarget, requestQueryEditorExe
           :sort-column="activeTab.resultSortColumn"
           :sort-column-index="activeTab.resultSortColumnIndex"
           :sort-direction="activeTab.resultSortDirection"
+          :sort-mode="activeTab.resultSortMode"
           :initial-order-by-input="activeTab.orderByInput"
           :sql="activeTab.sql"
           :loading="activeTab.isExecuting"
@@ -978,7 +981,7 @@ defineExpose({ focusSearch, refreshData, handleModRTarget, requestQueryEditorExe
           @update:order-by-input="(v: string) => (activeTab.orderByInput = v)"
           @reload="(sql?: string, searchText?: string, whereInput?: string, orderBy?: string, limit?: number, offset?: number) => emit('reload', sql, searchText, whereInput, orderBy, limit, offset)"
           @paginate="(offset: number, limit: number, whereInput?: string, orderBy?: string) => emit('paginate', offset, limit, whereInput, orderBy)"
-          @sort="(column: string, columnIndex: number, direction: 'asc' | 'desc' | null, whereInput?: string) => emit('sort', column, columnIndex, direction, whereInput)"
+          @sort="(column: string, columnIndex: number, direction: 'asc' | 'desc' | null, whereInput?: string, mode?: DataGridSortMode) => emit('sort', column, columnIndex, direction, whereInput, mode)"
         />
         <QueryLoadingState v-else-if="activeTab.isExecuting" class="h-full" :label-key="queryExecutionLabelKey(activeTab)" :elapsed-seconds="queryRunningElapsedSeconds" show-cancel :cancel-disabled="!canCancelQueryExecution(activeTab)" :cancelling="activeTab.isCancelling" @cancel="emit('cancel')" />
         <div v-else class="h-full flex flex-col items-center justify-center gap-3 text-muted-foreground text-sm">
