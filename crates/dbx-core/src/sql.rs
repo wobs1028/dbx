@@ -381,7 +381,9 @@ impl SqlStatementSplitter {
                     self.buffer.push(ch);
                 }
                 ';' if !self.in_single_quote && !self.in_double_quote && !self.in_backtick => {
-                    if self.custom_delimiter.is_some() {
+                    if self.options.profile.supports_custom_delimiter_commands && self.on_delimiter_line() {
+                        self.buffer.push(ch);
+                    } else if self.custom_delimiter.is_some() {
                         self.buffer.push(ch);
                     } else if self.options.profile.supports_oracle_plsql_blocks
                         && starts_with_oracle_plsql_block(&self.buffer)
@@ -773,7 +775,12 @@ fn split_sql_statement_ranges_with_options(sql: &str, options: SqlParsingOptions
                 in_backtick = !in_backtick;
                 i += ch.len_utf8();
             }
-            ';' if !in_single_quote && !in_double_quote && !in_backtick && custom_delimiter.is_none() => {
+            ';' if !in_single_quote
+                && !in_double_quote
+                && !in_backtick
+                && custom_delimiter.is_none()
+                && !(options.profile.supports_custom_delimiter_commands && is_on_delimiter_line(sql, start, i)) =>
+            {
                 let is_oracle_plsql =
                     options.profile.supports_oracle_plsql_blocks && starts_with_oracle_plsql_block(&sql[start..i]);
                 if is_oracle_plsql {
@@ -2858,6 +2865,66 @@ END";
         assert_eq!(
             split_sql_statements_for_database(sql, DatabaseType::Mysql),
             vec!["SELECT 1", "# mysql comment\n\nSELECT 2 # trailing comment"]
+        );
+    }
+
+    #[test]
+    fn mysql_delimiter_command_keeps_procedure_body_together_per_issue_1978() {
+        let sql = "\
+-- ----------------------------
+-- Procedure structure for fix_collation
+-- ----------------------------
+DROP PROCEDURE IF EXISTS `fix_collation`;
+delimiter ;;
+CREATE PROCEDURE `fix_collation`()
+BEGIN
+DECLARE done INT DEFAULT FALSE;
+DECLARE tbl_name VARCHAR(255);
+DECLARE cur CURSOR FOR
+SELECT TABLE_NAME FROM information_schema.TABLES
+WHERE TABLE_SCHEMA = DATABASE() AND TABLE_COLLATION = 'utf8mb4_0900_ai_ci';
+DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = TRUE;
+
+    OPEN cur;
+    read_loop: LOOP
+        FETCH cur INTO tbl_name;
+        IF done THEN LEAVE read_loop; END IF;
+        SET @sql = CONCAT('ALTER TABLE `', tbl_name, '` CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci');
+        PREPARE stmt FROM @sql;
+        EXECUTE stmt;
+        DEALLOCATE PREPARE stmt;
+    END LOOP;
+    CLOSE cur;
+END
+;;
+delimiter ;";
+
+        assert_eq!(
+            split_sql_statements_for_database(sql, DatabaseType::Mysql),
+            vec![
+                "-- ----------------------------\n-- Procedure structure for fix_collation\n-- ----------------------------\nDROP PROCEDURE IF EXISTS `fix_collation`",
+                "CREATE PROCEDURE `fix_collation`()\nBEGIN\nDECLARE done INT DEFAULT FALSE;\nDECLARE tbl_name VARCHAR(255);\nDECLARE cur CURSOR FOR\nSELECT TABLE_NAME FROM information_schema.TABLES\nWHERE TABLE_SCHEMA = DATABASE() AND TABLE_COLLATION = 'utf8mb4_0900_ai_ci';\nDECLARE CONTINUE HANDLER FOR NOT FOUND SET done = TRUE;\n\n    OPEN cur;\n    read_loop: LOOP\n        FETCH cur INTO tbl_name;\n        IF done THEN LEAVE read_loop; END IF;\n        SET @sql = CONCAT('ALTER TABLE `', tbl_name, '` CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci');\n        PREPARE stmt FROM @sql;\n        EXECUTE stmt;\n        DEALLOCATE PREPARE stmt;\n    END LOOP;\n    CLOSE cur;\nEND",
+            ]
+        );
+    }
+
+    #[test]
+    fn mysql_current_statement_ignores_delimiter_command_semicolon_per_issue_1978() {
+        let sql = "\
+delimiter ;;
+CREATE PROCEDURE `fix_collation`()
+BEGIN
+    SET @sql = CONCAT('ALTER TABLE `', 't', '` CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci');
+    PREPARE stmt FROM @sql;
+    EXECUTE stmt;
+END
+;;
+delimiter ;";
+        let cursor = sql[..sql.find("PREPARE").unwrap()].encode_utf16().count();
+
+        assert_eq!(
+            find_statement_at_cursor_for_database(sql, cursor, DatabaseType::Mysql),
+            "CREATE PROCEDURE `fix_collation`()\nBEGIN\n    SET @sql = CONCAT('ALTER TABLE `', 't', '` CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci');\n    PREPARE stmt FROM @sql;\n    EXECUTE stmt;\nEND"
         );
     }
 
