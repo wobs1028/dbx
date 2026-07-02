@@ -121,53 +121,76 @@ impl MySqlSqlFileExecutor {
         child_token: &CancellationToken,
         execution_id: &str,
     ) -> Result<QueryResult, String> {
-        self.ensure_conn(state, child_token).await?;
-        state.running_queries.set_pool_key(execution_id, self.pool_key.clone());
-        state.touch_pool_activity(&self.pool_key).await;
-        let _activity_touch = state.pool_activity_touch(&self.pool_key);
+        // Mirror `execute_sql_statement_with_options`: on a transient
+        // connection error the pool is reconnected and the statement is
+        // retried once instead of failing the whole import. The pinned
+        // connection is re-acquired from the fresh pool by `ensure_conn` on
+        // each attempt, so `USE`/session state is re-established via the
+        // tracked `self.database` before the retry runs.
+        for attempt in 0..2 {
+            self.ensure_conn(state, child_token).await?;
+            state.running_queries.set_pool_key(execution_id, self.pool_key.clone());
+            state.touch_pool_activity(&self.pool_key).await;
+            let _activity_touch = state.pool_activity_touch(&self.pool_key);
 
-        let conn = self.conn.as_mut().ok_or("MySQL SQL file executor is missing a connection".to_string())?;
-        let connection_id = conn.id();
-        let kill_opts = conn.opts().clone();
-        state.running_queries.register_interrupt(execution_id, move || {
-            let kill_opts = kill_opts.clone();
-            tokio::spawn(async move {
-                if let Err(error) = db::mysql::kill_query_with_opts(kill_opts, connection_id).await {
-                    log::warn!("Failed to cancel MySQL SQL file import query {connection_id}: {error}");
-                }
+            let conn = self.conn.as_mut().ok_or("MySQL SQL file executor is missing a connection".to_string())?;
+            let connection_id = conn.id();
+            let kill_opts = conn.opts().clone();
+            state.running_queries.register_interrupt(execution_id, move || {
+                let kill_opts = kill_opts.clone();
+                tokio::spawn(async move {
+                    if let Err(error) = db::mysql::kill_query_with_opts(kill_opts, connection_id).await {
+                        log::warn!("Failed to cancel MySQL SQL file import query {connection_id}: {error}");
+                    }
+                });
             });
-        });
 
-        let result = wait_for_query_opt(
-            Some(child_token.clone()),
-            self.budget.query_timeout,
-            db::mysql::execute_query_on_conn_with_max_rows(conn, sql, self.bare, None, self.dialect),
-        )
-        .await;
+            let result = wait_for_query_opt(
+                Some(child_token.clone()),
+                self.budget.query_timeout,
+                db::mysql::execute_query_on_conn_with_max_rows(conn, sql, self.bare, None, self.dialect),
+            )
+            .await;
 
-        if result.is_ok() {
-            // Reconnects should reopen the most recent `USE` target rather than
-            // the request's initial database value.
-            if let Some(database) = mysql_use_database_target(sql) {
-                self.database = database;
+            if result.is_ok() {
+                // Reconnects should reopen the most recent `USE` target rather than
+                // the request's initial database value.
+                if let Some(database) = mysql_use_database_target(sql) {
+                    self.database = database;
+                }
+                return result;
             }
-        }
 
-        if let Err(error) = result.as_ref() {
-            let action = pool_error_action(self.db_type, error);
-            if matches!(action, PoolErrorAction::Discard | PoolErrorAction::ReconnectAndRetry) {
-                self.conn.take();
-                if matches!(action, PoolErrorAction::ReconnectAndRetry) {
-                    let database = self.database.trim();
-                    let database = (!database.is_empty()).then_some(database);
-                    self.pool_key = state.reconnect_pool_for_session(&self.connection_id, database, None).await?;
-                } else {
+            let action = pool_error_action(self.db_type, result.as_ref().unwrap_err());
+            match action {
+                PoolErrorAction::Keep => return result,
+                PoolErrorAction::Discard => {
+                    self.conn.take();
                     state.remove_pool_by_key(&self.pool_key).await;
+                    return result;
+                }
+                PoolErrorAction::ReconnectAndRetry => {
+                    self.conn.take();
+                    if attempt == 0 && !child_token.is_cancelled() {
+                        let database = self.database.trim();
+                        let database = (!database.is_empty()).then_some(database);
+                        self.pool_key = state.reconnect_pool_for_session(&self.connection_id, database, None).await?;
+                        continue;
+                    }
+                    // Cancelled, or the retry itself failed with another
+                    // reconnectable error: refresh the pool so the next
+                    // statement starts from a clean connection, then surface
+                    // the original error.
+                    if !child_token.is_cancelled() {
+                        let database = self.database.trim();
+                        let database = (!database.is_empty()).then_some(database);
+                        let _ = state.reconnect_pool_for_session(&self.connection_id, database, None).await;
+                    }
+                    return result;
                 }
             }
         }
-
-        result
+        unreachable!("MySQL SQL file executor retry loop runs at most twice")
     }
 
     async fn ensure_conn(&mut self, state: &AppState, token: &CancellationToken) -> Result<(), String> {
