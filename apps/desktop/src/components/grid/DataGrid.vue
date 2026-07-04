@@ -87,6 +87,7 @@ import TemporalCellEditor from "@/components/grid/TemporalCellEditor.vue";
 import EnumCellEditor from "@/components/grid/EnumCellEditor.vue";
 import type { QueryResult, ColumnInfo, DatabaseType, ForeignKeyInfo, IndexInfo, TriggerInfo, TableInfoTab } from "@/types/database";
 import * as api from "@/lib/backend/api";
+import { formatElapsedSeconds } from "@/lib/common/elapsedTime";
 import { dataGridCellDisplayText, dataGridCellEditorText } from "@/lib/dataGrid/dataGridCellCoercion";
 import { createColumnDrafts } from "@/lib/table/tableStructureEditorState";
 import type { BuildSingleColumnAlterSqlOptions } from "@/lib/table/tableStructureEditorSql";
@@ -7652,12 +7653,14 @@ function onDetailResizeEnd() {
 }
 
 const loadingElapsed = ref(0);
-let _loadingTimer: ReturnType<typeof setInterval> | undefined;
+let _loadingFrame: number | undefined;
 let _loadingStart = 0;
 
 function stopLoadingElapsedTimer() {
-  clearInterval(_loadingTimer);
-  _loadingTimer = undefined;
+  if (_loadingFrame !== undefined) {
+    window.cancelAnimationFrame(_loadingFrame);
+    _loadingFrame = undefined;
+  }
 }
 
 function startLoadingElapsedTimer() {
@@ -7665,9 +7668,12 @@ function startLoadingElapsedTimer() {
   if (!dataGridIsActive || !props.loading) return;
   _loadingStart = Date.now();
   loadingElapsed.value = 0;
-  _loadingTimer = setInterval(() => {
+  const updateOnNextFrame = () => {
+    if (!dataGridIsActive || !props.loading) return;
     loadingElapsed.value = Date.now() - _loadingStart;
-  }, 100);
+    _loadingFrame = window.requestAnimationFrame(updateOnNextFrame);
+  };
+  _loadingFrame = window.requestAnimationFrame(updateOnNextFrame);
 }
 
 watch(
@@ -7716,7 +7722,7 @@ onUnmounted(() => {
   if (serverFilterSearchTimer !== undefined) {
     window.clearTimeout(serverFilterSearchTimer);
   }
-  clearInterval(_loadingTimer);
+  stopLoadingElapsedTimer();
 });
 
 const filteredColumns = computed(() => {
@@ -9496,7 +9502,7 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
               <div v-if="loading" class="absolute inset-0 z-20 bg-background/50 flex items-center justify-center">
                 <div class="flex items-center gap-2 px-3 py-1.5 rounded-md bg-background border shadow-sm text-xs text-muted-foreground">
                   <Loader2 class="w-3.5 h-3.5 animate-spin" />
-                  <span>{{ (loadingElapsed / 1000).toFixed(1) }}s</span>
+                  <span>{{ formatElapsedSeconds(loadingElapsed) }}s</span>
                 </div>
               </div>
             </template>

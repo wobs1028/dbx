@@ -67,6 +67,7 @@ import { buildMongoUpdateDocument, formatMongoShellLiteral, type MongoInputValue
 import type { SqlExecutionOverride } from "@/lib/sql/sqlExecutionTarget";
 import type { DataGridSortMode } from "@/lib/dataGrid/dataGridSort";
 import { useTabScroll } from "@/composables/useTabScroll";
+import { formatElapsedSeconds } from "@/lib/common/elapsedTime";
 import type { CustomSaveHandler } from "@/composables/useDataGridEditor";
 import type { QueryTab, ConnectionConfig, TableInfoTab, TreeNode, VectorCollectionMeta } from "@/types/database";
 import { sqlFormatDialectForDbType, type SqlFormatDialect } from "@/lib/sql/sqlFormatter";
@@ -376,11 +377,13 @@ function onResultsResized(payload: { panes: { size: number }[] }) {
     safeLocalStorageSet("dbx-results-pane-size", String(resultsPane.size));
   }
 }
-let queryRunningElapsedTimer: ReturnType<typeof setInterval> | undefined;
+let queryRunningElapsedFrame: number | undefined;
 
 function stopQueryRunningElapsedTimer() {
-  clearInterval(queryRunningElapsedTimer);
-  queryRunningElapsedTimer = undefined;
+  if (queryRunningElapsedFrame !== undefined) {
+    window.cancelAnimationFrame(queryRunningElapsedFrame);
+    queryRunningElapsedFrame = undefined;
+  }
 }
 
 function updateQueryRunningElapsed() {
@@ -392,10 +395,16 @@ function startQueryRunningElapsedTimer() {
   stopQueryRunningElapsedTimer();
   updateQueryRunningElapsed();
   if (!props.activeTab.isExecuting || !props.activeTab.queryExecutionStartedAt) return;
-  queryRunningElapsedTimer = setInterval(updateQueryRunningElapsed, 100);
+  const updateOnNextFrame = () => {
+    updateQueryRunningElapsed();
+    if (props.activeTab.isExecuting && props.activeTab.queryExecutionStartedAt) {
+      queryRunningElapsedFrame = window.requestAnimationFrame(updateOnNextFrame);
+    }
+  };
+  queryRunningElapsedFrame = window.requestAnimationFrame(updateOnNextFrame);
 }
 
-const queryRunningElapsedSeconds = computed(() => (queryRunningElapsed.value / 1000).toFixed(1));
+const queryRunningElapsedSeconds = computed(() => formatElapsedSeconds(queryRunningElapsed.value));
 
 watch(() => [props.activeTab.id, props.activeTab.isExecuting, props.activeTab.queryExecutionStartedAt] as const, startQueryRunningElapsedTimer, { immediate: true });
 
