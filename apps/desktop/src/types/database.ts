@@ -272,6 +272,21 @@ export interface JdbcMavenBundleInfo {
   artifacts: JdbcMavenArtifactInfo[];
 }
 
+export interface JdbcLocalArtifactInfo {
+  file_name: string;
+  path: string;
+  size: number;
+  sha256: string;
+}
+
+export interface JdbcLocalBundleInfo {
+  id: string;
+  name: string;
+  installed_at: string;
+  path: string;
+  artifacts: JdbcLocalArtifactInfo[];
+}
+
 export interface JdbcPluginStatus {
   installed: boolean;
   version?: string | null;

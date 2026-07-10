@@ -27,6 +27,7 @@ import type {
   DatabaseType,
   InstalledPlugin,
   JdbcDriverInfo,
+  JdbcLocalBundleInfo,
   JdbcMavenBundleInfo,
   JdbcPluginStatus,
   SavedSqlFile,
@@ -1131,6 +1132,10 @@ export async function listJdbcMavenBundles(): Promise<JdbcMavenBundleInfo[]> {
   return invoke("list_jdbc_maven_bundles");
 }
 
+export async function listJdbcLocalBundles(): Promise<JdbcLocalBundleInfo[]> {
+  return invoke("list_jdbc_local_bundles");
+}
+
 export async function importJdbcDrivers(paths: (string | File)[]): Promise<JdbcDriverInfo[]> {
   if (paths.some((path) => typeof path !== "string")) {
     throw new Error("Desktop JDBC driver import requires local file paths");
@@ -1152,6 +1157,10 @@ export async function deleteJdbcDriver(path: string): Promise<JdbcDriverInfo[]> 
 
 export async function deleteJdbcMavenBundle(bundleId: string): Promise<JdbcDriverInfo[]> {
   return invoke("delete_jdbc_maven_bundle", { bundleId });
+}
+
+export async function deleteJdbcLocalBundle(bundleId: string): Promise<JdbcDriverInfo[]> {
+  return invoke("delete_jdbc_local_bundle", { bundleId });
 }
 
 export async function jdbcPluginStatus(): Promise<JdbcPluginStatus> {

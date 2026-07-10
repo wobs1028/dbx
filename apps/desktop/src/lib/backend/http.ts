@@ -25,6 +25,7 @@ import type {
   DatabaseType,
   InstalledPlugin,
   JdbcDriverInfo,
+  JdbcLocalBundleInfo,
   JdbcMavenBundleInfo,
   JdbcPluginStatus,
   SidebarLayout,
@@ -267,6 +268,10 @@ export async function listJdbcMavenBundles(): Promise<JdbcMavenBundleInfo[]> {
   return get("/api/jdbc/drivers/maven");
 }
 
+export async function listJdbcLocalBundles(): Promise<JdbcLocalBundleInfo[]> {
+  return get("/api/jdbc/drivers/local");
+}
+
 export async function importJdbcDrivers(pathsOrFiles: (string | File)[]): Promise<JdbcDriverInfo[]> {
   const formData = new FormData();
   for (const item of pathsOrFiles) {
@@ -298,6 +303,10 @@ export async function deleteJdbcDriver(path: string): Promise<JdbcDriverInfo[]> 
 
 export async function deleteJdbcMavenBundle(bundleId: string): Promise<JdbcDriverInfo[]> {
   return del(`/api/jdbc/drivers/maven/${encodeURIComponent(bundleId)}`);
+}
+
+export async function deleteJdbcLocalBundle(bundleId: string): Promise<JdbcDriverInfo[]> {
+  return del(`/api/jdbc/drivers/local/${encodeURIComponent(bundleId)}`);
 }
 
 export async function jdbcPluginStatus(): Promise<JdbcPluginStatus> {
