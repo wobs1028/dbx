@@ -8683,18 +8683,15 @@ function copySubmenu(): ContextMenuItem {
       items.push({
         label: labels.insertNoPkMerged,
         action: () => copyRowAsInsertWithoutPrimaryKeys("merged"),
-        disabled: !canCopyRowAsInsertWithoutPrimaryKeys.value,
       });
       items.push({
         label: labels.insertNoPkRowByRow,
         action: () => copyRowAsInsertWithoutPrimaryKeys("row-by-row"),
-        disabled: !canCopyRowAsInsertWithoutPrimaryKeys.value,
       });
     } else {
       items.push({
         label: labels.insertNoPk,
         action: () => copyRowAsInsertWithoutPrimaryKeys(),
-        disabled: !canCopyRowAsInsertWithoutPrimaryKeys.value,
       });
     }
   }
