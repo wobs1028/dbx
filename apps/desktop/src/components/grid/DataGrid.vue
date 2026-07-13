@@ -11510,14 +11510,17 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
   }
 }
 
-.data-grid-header-shell,
+.data-grid-header-shell {
+  /* Keep unused horizontal space continuous with the result background;
+     only real column headers should use the header fill. */
+  background-color: var(--background);
+}
+
 .data-grid-header-cell {
   background-color: rgb(239, 239, 239);
 }
 
-[data-grid-root].data-grid--dark .data-grid-header-shell,
 [data-grid-root].data-grid--dark .data-grid-header-cell,
-:global(.dark) [data-grid-root] .data-grid-header-shell,
 :global(.dark) [data-grid-root] .data-grid-header-cell {
   background-color: rgb(32, 32, 34) !important;
 }
