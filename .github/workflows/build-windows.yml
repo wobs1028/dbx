@@ -25,7 +25,7 @@ jobs:
         run: |
           export TAURI_SIGNING_PRIVATE_KEY=""
           export TAURI_SIGNING_PRIVATE_KEY_PASSWORD=""
-          pnpm tauri build
+          pnpm tauri build -- --no-default-features --features duckdb-bundled,mq-admin
         env:
           CI: true
 
