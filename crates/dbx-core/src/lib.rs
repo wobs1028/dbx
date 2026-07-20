@@ -72,7 +72,7 @@ pub mod types;
 pub mod update;
 pub mod xlsx_export;
 
-pub const R2_CDN_BASE: &str = "https://dl.dbxio.com/";
+pub const R2_CDN_BASE: &str = "http://25.75.3.1/dbx-drivers/";
 pub const GITHUB_RELEASE_DOWNLOAD_PREFIX: &str = "https://github.com/t8y2/dbx/releases/download/";
 pub const CNB_RELEASE_DOWNLOAD_PREFIX: &str = "https://cnb.cool/dbxio.com/dbx/-/releases/download/";
 
