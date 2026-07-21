@@ -22,10 +22,7 @@ jobs:
 
       - name: Build Tauri app
         shell: bash
-        run: |
-          export TAURI_SIGNING_PRIVATE_KEY=""
-          export TAURI_SIGNING_PRIVATE_KEY_PASSWORD=""
-          pnpm tauri build -- --no-default-features --features duckdb-bundled,mq-admin
+        run: pnpm tauri build -- --no-default-features --features duckdb-bundled,mq-admin
         env:
           CI: true
 
