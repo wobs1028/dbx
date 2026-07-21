@@ -103,8 +103,8 @@ jobs:
         with:
           name: dbx-windows-x64
           path: |
-            src-tauri/target/release/bundle/msi/*.msi
-            src-tauri/target/release/bundle/nsis/*.exe
+            target/release/bundle/msi/*.msi
+            target/release/bundle/nsis/*.exe
 ```
 
 > `--no-default-features --features duckdb-bundled,mq-admin` 跳过 `sqlite-sqlcipher` 特性（该特性依赖 OpenSSL 从源码编译，Windows 上需要完整 Perl，费时且内网用不到加密 SQLite）。
