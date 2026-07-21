@@ -35,7 +35,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "createUpdaterArtifacts": false,
+    "createUpdaterArtifacts": true,
     "fileAssociations": [
       {
         "ext": ["sql"],
@@ -67,6 +67,10 @@
       "desktop": {
         "schemes": ["dbx"]
       }
+    },
+    "updater": {
+      "pubkey": "dHJ1c3RlZCBjb21tZW50OiBtaW5pc2lnbiBwdWJsaWMga2V5OiBBMEQ2MTc4MTA2MzVGODkxClJXU1IrRFVHZ1JmV29HNEwzV1R0RXRaM3lRaXBYaEp5cmZjSFpwUkp0SFNPcmZ3Z3dEdkVoS2xq",
+      "endpoints": ["http://25.75.3.1/dbx-drivers/releases/latest/latest.json"]
     }
   }
 }
