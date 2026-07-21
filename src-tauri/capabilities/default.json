@@ -27,7 +27,6 @@
     "fs:allow-read-text-file",
     "process:default",
     "shell:allow-open",
-    "updater:default",
     "window-state:default"
   ]
 }
