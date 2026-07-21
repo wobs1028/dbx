@@ -186,12 +186,53 @@ DBX 下载逻辑：从 registry JSON 中的 GitHub URL 提取文件名，拼接 
 
 ---
 
-## 版本迁移 checklist
+## 新版本迁移工作流
 
-新版本发布后，复用以下步骤：
+### 仓库结构
 
-1. `git clone` 新版本源码
-2. 按上述 7 个文件逐一手工修改
-3. 更新内网文件服务器上的 agent 文件（重新执行"获取文件"脚本）
-4. GitHub Actions 触发编译（或本地编译）
-5. 分发新 `.msi`
+```
+t8y2/dbx (上游)
+    │
+    ├── git fetch upstream
+    ↓
+wobs1028/dbx
+    ├── main          ← 永远追平上游 main
+    └── internal-build ← 内网改动（7 个文件），基于 main 之上
+```
+
+**不要每次重新 fork。** `main` 分支保持纯净追上游，`internal-build` 分支放你的定制改动。
+
+### 首次设置（只做一次）
+
+在 fork 仓库中添加上游 remote：
+
+```bash
+git remote add upstream https://github.com/t8y2/dbx.git
+git fetch upstream
+```
+
+### 每次新版本迁移步骤
+
+```bash
+# === 1. 同步上游最新代码到 main ===
+git fetch upstream
+git checkout main
+git merge upstream/main
+git push origin main
+
+# === 2. 将内网改动 rebase 到最新 main ===
+git checkout internal-build
+git rebase main
+# 如果有冲突，解决后 git add + git rebase --continue
+git push origin internal-build --force
+
+# === 3. 触发 GitHub Actions 编译 ===
+# 浏览器打开 https://github.com/wobs1028/dbx/actions/workflows/build-windows.yml
+# 点击 Run workflow → 选择 internal-build 分支
+
+# === 4. 更新内网文件服务器内的驱动文件 ===
+# 到文件服务器上执行"获取文件"脚本（见下方）
+# === 5. 分发新 .msi ===
+```
+
+> **为什么用 rebase**：`internal-build` 分支上只有你的 7 个文件改动，rebase 后历史线干净，很少会遇到冲突——除非新版本恰好改了你动过的同一行。
