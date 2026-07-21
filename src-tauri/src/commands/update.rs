@@ -1,12 +1,8 @@
-use std::sync::{
-    atomic::{AtomicU64, Ordering},
-    Arc, Mutex,
-};
+use std::sync::Mutex;
 
 pub use dbx_core::update::UpdateInfo;
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter};
-use tauri_plugin_updater::{Update, UpdaterExt};
+use tauri::AppHandle;
 
 const OFFICIAL_UPDATE_ENDPOINTS: [&str; 2] = [
     "https://dl.dbxio.com/releases/latest/latest.json",
@@ -32,7 +28,7 @@ pub struct UpdateDownloadProgress {
 
 enum PendingUpdate {
     Downloading,
-    Ready { update: Box<Update>, bytes: Vec<u8> },
+    Ready { bytes: Vec<u8> },
 }
 
 #[derive(Default)]
@@ -50,9 +46,9 @@ impl PendingUpdateState {
         Ok(())
     }
 
-    fn finish_download(&self, update: Update, bytes: Vec<u8>) -> Result<(), String> {
+    fn finish_download(&self, bytes: Vec<u8>) -> Result<(), String> {
         let mut pending = self.pending.lock().map_err(|_| "Update state is unavailable.".to_string())?;
-        *pending = Some(PendingUpdate::Ready { update: Box::new(update), bytes });
+        *pending = Some(PendingUpdate::Ready { bytes });
         Ok(())
     }
 
@@ -154,106 +150,17 @@ pub async fn get_system_proxy_url() -> Option<String> {
 
 #[tauri::command]
 pub async fn download_update(
-    app: AppHandle,
-    state: tauri::State<'_, PendingUpdateState>,
-    source: UpdateDownloadSource,
-    latest_version: Option<String>,
+    _app: AppHandle,
+    _state: tauri::State<'_, PendingUpdateState>,
+    _source: UpdateDownloadSource,
+    _latest_version: Option<String>,
 ) -> Result<(), String> {
-    if crate::data_dir::is_portable_mode() {
-        return Err("Portable builds cannot use the in-app installer.".to_string());
-    }
-
-    state.begin_download()?;
-    let result = download_update_inner(&app, &source, latest_version.as_deref()).await;
-    match result {
-        Ok((update, bytes)) => state.finish_download(update, bytes),
-        Err(error) => {
-            state.cancel_download();
-            Err(error)
-        }
-    }
-}
-
-async fn download_update_inner(
-    app: &AppHandle,
-    source: &UpdateDownloadSource,
-    latest_version: Option<&str>,
-) -> Result<(Update, Vec<u8>), String> {
-    let endpoint_urls = source.endpoints(latest_version)?;
-    println!("[DBX updater] checking from {} endpoints: {}", source.label(), endpoint_urls.join(", "));
-    let mut endpoints = Vec::with_capacity(endpoint_urls.len());
-    for endpoint_url in endpoint_urls {
-        endpoints.push(endpoint_url.parse().map_err(|e| format!("Invalid update endpoint: {e}"))?);
-    }
-    let mut builder =
-        app.updater_builder().endpoints(endpoints).map_err(|e| format!("Failed to configure updater endpoint: {e}"))?;
-
-    if let Some(proxy_url) = dbx_core::update::system_proxy_url() {
-        let proxy = proxy_url.parse().map_err(|e| format!("Invalid system proxy URL: {e}"))?;
-        builder = builder.proxy(proxy);
-    }
-
-    let updater = builder.build().map_err(|e| format!("Failed to create updater: {e}"))?;
-    let update = updater.check().await.map_err(|e| format!("Failed to check updates: {e}"))?;
-    let Some(mut update) = update else {
-        return Err("No update available.".to_string());
-    };
-    if let Some(download_url) = source.rewrite_download_url(update.download_url.as_str())? {
-        update.download_url = download_url.parse().map_err(|e| format!("Invalid CNB update download URL: {e}"))?;
-    }
-    if !update_url_is_available(update.download_url.as_str()).await {
-        if let Some(fallback_url) = source.r2_fallback_url(update.download_url.as_str())? {
-            println!("[DBX updater] {} asset unavailable; falling back to R2: {fallback_url}", source.label());
-            update.download_url = fallback_url.parse().map_err(|e| format!("Invalid R2 update download URL: {e}"))?;
-        }
-    }
-    println!("[DBX updater] downloading from {} URL: {}", source.label(), update.download_url);
-
-    let downloaded = Arc::new(AtomicU64::new(0));
-    let finished_downloaded = Arc::clone(&downloaded);
-    let bytes = update
-        .download(
-            |chunk_len, total| {
-                let downloaded =
-                    downloaded.fetch_add(chunk_len as u64, Ordering::Relaxed).saturating_add(chunk_len as u64);
-                let _ = app.emit(UPDATE_DOWNLOAD_PROGRESS_EVENT, UpdateDownloadProgress { downloaded, total });
-            },
-            || {
-                let downloaded = finished_downloaded.load(Ordering::Relaxed);
-                let _ = app.emit(
-                    UPDATE_DOWNLOAD_PROGRESS_EVENT,
-                    UpdateDownloadProgress { downloaded, total: Some(downloaded) },
-                );
-            },
-        )
-        .await
-        .map_err(|e| format!("Failed to download update: {e}"))?;
-    Ok((update, bytes))
+    Err("Auto-update is disabled in this build.".into())
 }
 
 #[tauri::command]
-pub fn install_downloaded_update(state: tauri::State<'_, PendingUpdateState>) -> Result<(), String> {
-    let mut pending = state.pending.lock().map_err(|_| "Update state is unavailable.".to_string())?;
-    let Some(PendingUpdate::Ready { update, bytes }) = pending.as_ref() else {
-        return Err("No downloaded update is ready to install.".to_string());
-    };
-    update.install(bytes).map_err(|e| format!("Failed to install update: {e}"))?;
-    *pending = None;
-    Ok(())
-}
-
-async fn update_url_is_available(url: &str) -> bool {
-    let client = match reqwest::Client::builder().timeout(std::time::Duration::from_secs(10)).build() {
-        Ok(client) => client,
-        Err(_) => return false,
-    };
-    // Request only the first byte because some release hosts do not implement HEAD consistently.
-    client
-        .get(url)
-        .header(reqwest::header::RANGE, "bytes=0-0")
-        .send()
-        .await
-        .is_ok_and(|response| response.status().is_success())
+pub fn install_downloaded_update(_state: tauri::State<'_, PendingUpdateState>) -> Result<(), String> {
+    Err("Auto-update is disabled in this build.".into())
 }
 
 #[cfg(test)]
