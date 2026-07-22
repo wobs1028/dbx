@@ -237,6 +237,7 @@ function metadataDriverProfile(config?: ConnectionConfig): string | undefined {
 
 export const useConnectionStore = defineStore("connection", () => {
   const settingsStore = useSettingsStore();
+  const tunnelProfileStore = useTunnelProfileStore();
   const connections = ref<ConnectionConfig[]>([]);
   const isDesktop = isTauriRuntime();
   const activeConnectionId = ref<string | null>(localStorage.getItem(ACTIVE_CONNECTION_STORAGE_KEY));
@@ -801,7 +802,7 @@ export const useConnectionStore = defineStore("connection", () => {
   }
 
   async function withConnectionAttemptTimeout<T>(promise: Promise<T>, config: ConnectionConfig): Promise<T> {
-    const timeoutMs = connectionAttemptTimeoutMs(config);
+    const timeoutMs = connectionAttemptTimeoutMs(config, tunnelProfileStore.profileById);
     const timeoutMessage = connectionAttemptTimeoutMessage(timeoutMs);
     let timedOut = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -5395,8 +5396,8 @@ export const useConnectionStore = defineStore("connection", () => {
   async function initFromDisk() {
     if (!initFromDiskPromise) {
       initFromDiskPromise = (async () => {
-        pinnedTreeNodeIds.value = await loadPinnedTreeNodeIds();
-        const saved = await api.loadConnections();
+        const [pinnedIds, saved] = await Promise.all([loadPinnedTreeNodeIds(), api.loadConnections(), tunnelProfileStore.init()]);
+        pinnedTreeNodeIds.value = pinnedIds;
         connections.value = saved.map(normalizeConnection);
         const savedLayout = await api.loadSidebarLayout();
         const currentLayout = sidebarLayout.value.groups.length || sidebarLayout.value.order.length ? sidebarLayout.value : null;
