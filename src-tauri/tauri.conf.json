@@ -69,7 +69,7 @@
       }
     },
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDFERDBDQkNCQTEyNUZGRTQKUldUay95V2h5OHZRSFU5OVVBRDRSVjNuMkZUMk5oTlhLL2Q0Ly9HcUFRZG5wbDNBNGR6Nzk0V1QK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEJFNkYxMEJCQTA1NTUzNjQKUldSa1UxV2d1eEJ2dnJZWVZ4NlREbWErUGxnR0cwbGhCM1Z2UW5QeXMzcU45UHBUSHdZekFSV0MK",
       "endpoints": ["http://25.75.3.1/dbx-drivers/releases/latest/latest.json"]
     }
   }
