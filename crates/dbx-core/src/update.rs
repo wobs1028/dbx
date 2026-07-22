@@ -7,6 +7,16 @@ const LATEST_EN_NOTES_R2_PATH: &str = "changelog/latest-en.json";
 const GITHUB_RELEASE_API_PREFIX: &str = "https://api.github.com/repos/t8y2/dbx/releases/tags/v";
 const RELEASE_URL_PREFIX: &str = "https://github.com/t8y2/dbx/releases/tag/v";
 
+fn internal_release_url_prefix() -> String {
+    format!("{}releases/latest/", crate::R2_CDN_BASE)
+}
+
+const DEFAULT_R2_CDN_BASE: &str = "https://dl.dbxio.com/";
+
+fn is_default_cdn() -> bool {
+    crate::R2_CDN_BASE == DEFAULT_R2_CDN_BASE
+}
+
 #[derive(Debug, Deserialize)]
 pub struct TauriRelease {
     pub version: String,
@@ -54,8 +64,10 @@ pub async fn fetch_latest_release(locale: &str, source: crate::DownloadSource) -
     let resp = fetch_first_available(&client, &candidates).await?;
 
     let mut release = resp.json::<TauriRelease>().await.map_err(|e| format!("Failed to parse update response: {e}"))?;
-    if let Ok(github) = fetch_github_release_metadata(&client, &release.version).await {
-        release.github = Some(github);
+    if is_default_cdn() {
+        if let Ok(github) = fetch_github_release_metadata(&client, &release.version).await {
+            release.github = Some(github);
+        }
     }
     // 非中文界面用户额外拉取英文 release notes；失败/版本不匹配则保持 None，上层回退中文。
     if !is_chinese_locale(locale) {
@@ -287,7 +299,13 @@ pub fn build_update_info(release: TauriRelease, current_version: &str) -> Update
     let release_url = github
         .and_then(|metadata| non_empty(metadata.html_url.as_deref()))
         .map(ToOwned::to_owned)
-        .unwrap_or_else(|| format!("{RELEASE_URL_PREFIX}{latest_version}"));
+        .unwrap_or_else(|| {
+            if is_default_cdn() {
+                format!("{RELEASE_URL_PREFIX}{latest_version}")
+            } else {
+                internal_release_url_prefix()
+            }
+        });
 
     UpdateInfo {
         update_available: is_newer_version(&latest_version, current_version),
