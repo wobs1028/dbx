@@ -49,6 +49,7 @@ import { postgresTlsModeForForm } from "@/lib/connection/postgresTlsMode";
 import { normalizeKafkaBootstrapServers } from "@/lib/connection/kafkaBootstrapServers";
 import { assertCompleteDatabaseCategories, databaseSelectionForCategory } from "@/lib/connection/databaseCategoryOptions";
 import { normalizeRocketmqNamesrvAddr } from "@/lib/connection/rocketmqNamesrv";
+import { normalizeRabbitmqAddresses } from "@/lib/connection/rabbitmqAddresses";
 import { detectMqUiAuthKind, isMqAuthKindAllowedForSystem, type MqUiAuthKind } from "@/lib/connection/mqAuth";
 import { driverInstallProgressPercent, type DriverInstallProgress } from "@/lib/connection/driverInstallProgressUi";
 import { requiresSqlServerLegacyCompatibilityComponent, setSqlServerLegacyCompatibilityConfig, sqlServerUsesLegacyCompatibility, SQLSERVER_LEGACY_COMPATIBILITY_DRIVER_KEY } from "@/lib/connection/sqlServerLegacyCompatibility";
@@ -518,6 +519,8 @@ const mqAdminUrl = ref("http://127.0.0.1:8080");
 const mqSystemKind = ref<MqSystemKind>("pulsar");
 const mqRocketmqNamesrvAddr = ref("127.0.0.1:9876");
 const mqRocketmqClusterName = ref("");
+const mqRabbitmqAddresses = ref("127.0.0.1:5672");
+const mqRabbitmqVirtualHost = ref("/");
 const mqKafkaBootstrapServers = ref("127.0.0.1:9092");
 const mqKafkaSecurityProtocol = ref(MQ_KAFKA_SECURITY_PROTOCOL_AUTO);
 const mqKafkaSaslMechanism = ref("PLAIN");
@@ -544,11 +547,13 @@ const MQ_DRIVER_LABELS: Record<MqSystemKind, string> = {
   pulsar: "Apache Pulsar",
   kafka: "Apache Kafka",
   rocketmq: "Apache RocketMQ",
+  rabbitmq: "RabbitMQ",
 };
 
 function mqSystemKindFromProfile(profile: string): MqSystemKind {
   if (profile === "kafka") return "kafka";
   if (profile === "rocketmq") return "rocketmq";
+  if (profile === "rabbitmq") return "rabbitmq";
   return "pulsar";
 }
 
@@ -558,7 +563,7 @@ function syncMqSystemKindFromSelectedType() {
 }
 
 function resolveMqSystemKind(config?: Partial<MqAdminConfig>): MqSystemKind {
-  if (config?.systemKind === "kafka" || config?.systemKind === "rocketmq" || config?.systemKind === "pulsar") {
+  if (config?.systemKind === "kafka" || config?.systemKind === "rocketmq" || config?.systemKind === "rabbitmq" || config?.systemKind === "pulsar") {
     return config.systemKind;
   }
   return mqSystemKindFromProfile(selectedType.value);
@@ -804,6 +809,7 @@ const driverProfiles: Record<
   mq: { type: "mq", port: 8080, user: "", label: "Apache Pulsar", icon: "pulsar", host: "127.0.0.1" },
   kafka: { type: "mq", port: 9092, user: "", label: "Apache Kafka", icon: "kafka", host: "127.0.0.1" },
   rocketmq: { type: "mq", port: 9876, user: "", label: "Apache RocketMQ", icon: "rocketmq", host: "127.0.0.1" },
+  rabbitmq: { type: "mq", port: 5672, user: "", label: "RabbitMQ", icon: "rabbitmq", host: "127.0.0.1" },
   nacos: { type: "nacos", port: 8848, user: "nacos", label: "Nacos", icon: "nacos", host: "127.0.0.1" },
   iris: { type: "iris", port: 1972, user: "_SYSTEM", label: "IRIS", icon: "iris" },
   influxdb: { type: "influxdb", port: 8086, user: "", label: "InfluxDB", icon: "InfluxDB" },
@@ -835,6 +841,7 @@ function profileForConfig(config: ConnectionConfig) {
     const kind = (config.external_config as MqAdminConfig | undefined)?.systemKind;
     if (kind === "kafka") return "kafka";
     if (kind === "rocketmq") return "rocketmq";
+    if (kind === "rabbitmq") return "rabbitmq";
     return "mq";
   }
   if (config.db_type === "dameng") return "dm";
@@ -883,10 +890,13 @@ function resetMqFields(config?: Partial<MqAdminConfig>) {
   const properties = mqExtraProperties(extra);
   const jaasConfig = mqExtraPropertyString(extra, "sasl.jaas.config");
   mqSystemKind.value = systemKind;
-  mqAdminUrl.value = config?.adminUrl?.trim() || (systemKind === "kafka" || systemKind === "rocketmq" ? "" : "http://127.0.0.1:8080");
+  const storedAdminUrl = config?.adminUrl?.trim() || (config ? mqExtraString(config as Record<string, unknown>, "admin_url").trim() : "");
+  mqAdminUrl.value = storedAdminUrl || (systemKind === "kafka" || systemKind === "rocketmq" || systemKind === "rabbitmq" ? "" : "http://127.0.0.1:8080");
   mqKafkaBootstrapServers.value = mqExtraString(extra, "bootstrapServers") || "127.0.0.1:9092";
   mqRocketmqNamesrvAddr.value = mqExtraString(extra, "namesrvAddr") || mqExtraString(extra, "namesrv_addr") || "127.0.0.1:9876";
   mqRocketmqClusterName.value = mqExtraString(extra, "clusterName") || mqExtraString(extra, "cluster_name");
+  mqRabbitmqAddresses.value = mqExtraString(extra, "addresses") || "127.0.0.1:5672";
+  mqRabbitmqVirtualHost.value = mqExtraString(extra, "virtualHost") || "/";
   mqKafkaSecurityProtocol.value = mqExtraString(extra, "securityProtocol") || MQ_KAFKA_SECURITY_PROTOCOL_AUTO;
   mqKafkaSaslMechanism.value = mqExtraString(extra, "saslMechanism") || "PLAIN";
   mqKafkaKerberosPrincipal.value = parseJaasStringProperty(jaasConfig, "principal");
@@ -934,6 +944,14 @@ function defaultMqFieldsForProfile(profile: string): Partial<MqAdminConfig> | un
       extra: { namesrvAddr: "127.0.0.1:9876" },
     };
   }
+  if (profile === "rabbitmq") {
+    return {
+      systemKind: "rabbitmq",
+      adminUrl: "",
+      auth: { kind: "none" },
+      extra: { addresses: "127.0.0.1:5672", virtualHost: "/" },
+    };
+  }
   return undefined;
 }
 
@@ -957,6 +975,12 @@ watch(mqSystemKind, (kind) => {
   }
   if (kind === "rocketmq") {
     if (!mqRocketmqNamesrvAddr.value.trim()) mqRocketmqNamesrvAddr.value = "127.0.0.1:9876";
+    if (!isMqAuthKindAllowedForSystem(kind, mqAuthKind.value)) mqAuthKind.value = "none";
+    return;
+  }
+  if (kind === "rabbitmq") {
+    if (!mqRabbitmqAddresses.value.trim()) mqRabbitmqAddresses.value = "127.0.0.1:5672";
+    if (!mqRabbitmqVirtualHost.value.trim()) mqRabbitmqVirtualHost.value = "/";
     if (!isMqAuthKindAllowedForSystem(kind, mqAuthKind.value)) mqAuthKind.value = "none";
     return;
   }
@@ -1120,6 +1144,21 @@ function buildMqAdminConfig(): MqAdminConfig {
     return {
       systemKind: "rocketmq",
       adminUrl: "",
+      auth: buildMqAuth(),
+      tlsSkipVerify: mqTlsSkipVerify.value || undefined,
+      extra,
+    };
+  }
+
+  if (systemKind === "rabbitmq") {
+    const addresses = normalizeRabbitmqAddresses(mqRabbitmqAddresses.value);
+    const extra: Record<string, unknown> = {
+      addresses,
+      virtualHost: mqRabbitmqVirtualHost.value.trim() || "/",
+    };
+    return {
+      systemKind: "rabbitmq",
+      adminUrl: mqAdminUrl.value.trim(),
       auth: buildMqAuth(),
       tlsSkipVerify: mqTlsSkipVerify.value || undefined,
       extra,
@@ -1491,6 +1530,20 @@ function applyMqKafkaBootstrapServers(config: LegacyConnectionConfig, bootstrapS
   config.host = parsed.hostname;
   config.port = Number(parsed.port) || 9092;
   config.ssl = securityProtocol === "SSL" || securityProtocol === "SASL_SSL";
+}
+
+function applyMqRabbitmqAddresses(config: LegacyConnectionConfig, addresses: string) {
+  const first = normalizeRabbitmqAddresses(addresses).split(",")[0];
+  if (!first) throw new Error(t("connection.mqRabbitmqAddressesRequired"));
+  let parsed: URL;
+  try {
+    parsed = new URL(`amqp://${first}`);
+  } catch {
+    throw new Error(t("connection.mqRabbitmqAddressesInvalid"));
+  }
+  config.host = parsed.hostname;
+  config.port = Number(parsed.port) || 5672;
+  config.ssl = false;
 }
 
 function applyNacosServerAddr(config: LegacyConnectionConfig, serverAddr: string) {
@@ -1987,6 +2040,7 @@ const iconTypeMap: Record<string, string> = {
   mq: "mq",
   kafka: "kafka",
   rocketmq: "rocketmq",
+  rabbitmq: "rabbitmq",
   nacos: "nacos",
   dm: "dm",
   h2: "h2",
@@ -2082,6 +2136,7 @@ const dbOptions: DbOption[] = [
   { value: "mq", label: "Apache Pulsar" },
   { value: "kafka", label: "Apache Kafka" },
   { value: "rocketmq", label: "Apache RocketMQ" },
+  { value: "rabbitmq", label: "RabbitMQ" },
   { value: "nacos", label: "Nacos" },
   { value: "influxdb", label: "InfluxDB" },
   { value: "iris", label: "IRIS" },
@@ -2495,6 +2550,7 @@ const hasRequiredConnectionTarget = computed(() => {
   if (form.value.db_type === "mq") {
     if (mqSystemKind.value === "kafka") return !!mqKafkaBootstrapServers.value.trim();
     if (mqSystemKind.value === "rocketmq") return !!mqRocketmqNamesrvAddr.value.trim();
+    if (mqSystemKind.value === "rabbitmq") return !!mqRabbitmqAddresses.value.trim();
     return !!mqAdminUrl.value.trim();
   }
   if (form.value.db_type === "zookeeper") return !!(form.value.host || form.value.connection_string || connectionUrlInput.value.trim());
@@ -2829,6 +2885,9 @@ function connectionConfigForSubmit(id: string, generatedName = ""): ConnectionCo
     } else if (mqConfig.systemKind === "rocketmq") {
       const extra = mqExtraRecord(mqConfig);
       applyMqRocketmqNamesrv(config, mqExtraString(extra, "namesrvAddr") || mqExtraString(extra, "namesrv_addr"));
+    } else if (mqConfig.systemKind === "rabbitmq") {
+      const extra = mqExtraRecord(mqConfig);
+      applyMqRabbitmqAddresses(config, mqExtraString(extra, "addresses"));
     } else {
       applyMqAdminUrl(config, mqConfig.adminUrl);
     }
@@ -4737,6 +4796,25 @@ function openExternalUrl(url: string) {
                       <Input v-model="mqRocketmqClusterName" class="col-span-3" :placeholder="t('connection.rocketmqClusterNamePlaceholder')" />
                     </div>
                   </template>
+                  <template v-else-if="mqSystemKind === 'rabbitmq'">
+                    <div class="grid grid-cols-4 items-center gap-4">
+                      <Label :class="connectionLabelClass">{{ t("connection.mqRabbitmqAddresses") }}</Label>
+                      <Input v-model="mqRabbitmqAddresses" class="col-span-3" :placeholder="t('connection.mqRabbitmqAddressesPlaceholder')" />
+                    </div>
+                    <div class="grid grid-cols-4 items-center gap-4">
+                      <Label :class="connectionLabelClass">{{ t("connection.mqVirtualHost") }}</Label>
+                      <Input v-model="mqRabbitmqVirtualHost" class="col-span-3" :placeholder="t('connection.mqVirtualHostPlaceholder')" />
+                    </div>
+                    <div class="grid grid-cols-4 items-start gap-4">
+                      <Label :class="connectionLabelClass">{{ t("connection.mqRabbitmqAdminUrl") }}</Label>
+                      <div class="col-span-3 space-y-1">
+                        <Input v-model="mqAdminUrl" :placeholder="t('connection.mqRabbitmqAdminUrlPlaceholder')" />
+                        <p class="text-xs text-muted-foreground">
+                          {{ t("connection.mqRabbitmqAdminUrlHint") }}
+                        </p>
+                      </div>
+                    </div>
+                  </template>
                   <template v-else>
                     <div class="grid grid-cols-4 items-center gap-4">
                       <Label :class="connectionLabelClass">{{ t("connection.mqAdminUrl") }}</Label>
@@ -4763,11 +4841,11 @@ function openExternalUrl(url: string) {
                   <template v-else-if="mqAuthKind === 'basic'">
                     <div class="grid grid-cols-4 items-center gap-4">
                       <Label :class="connectionLabelClass">{{ mqSystemKind === "rocketmq" ? t("connection.rocketmqAccessKey") : t("connection.user") }}</Label>
-                      <Input v-model="mqBasicUsername" class="col-span-3" />
+                      <Input v-model="mqBasicUsername" class="col-span-3" :placeholder="mqSystemKind === 'rabbitmq' ? t('connection.mqRabbitmqUsernamePlaceholder') : ''" />
                     </div>
                     <div class="grid grid-cols-4 items-center gap-4">
                       <Label :class="connectionLabelClass">{{ mqSystemKind === "rocketmq" ? t("connection.rocketmqSecretKey") : t("connection.password") }}</Label>
-                      <PasswordInput v-model="mqBasicPassword" class="col-span-3" />
+                      <PasswordInput v-model="mqBasicPassword" class="col-span-3" :placeholder="mqSystemKind === 'rabbitmq' ? t('connection.mqRabbitmqPasswordPlaceholder') : ''" />
                     </div>
                     <div v-if="mqSystemKind === 'kafka'" class="grid grid-cols-4 items-center gap-4">
                       <Label :class="connectionLabelClass">{{ t("connection.mqSaslMechanism") }}</Label>
