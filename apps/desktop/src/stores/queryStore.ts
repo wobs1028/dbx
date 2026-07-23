@@ -49,7 +49,7 @@ import { clearDataGridPendingSnapshotsForTab } from "@/composables/useDataGridEd
 import { buildTabResultSnapshot, deleteTabResultSnapshot, pruneTabResultSnapshots, readTabResultSnapshot, tabResultCacheKey, writeTabResultSnapshot } from "@/lib/tabs/tabResultCache";
 import { estimateQueryResultsBytes, selectInactiveResultEvictions } from "@/lib/tabs/queryResultSize";
 import { queryResultBaseSql, queryResultExecutionSql } from "@/lib/tabs/tabPresentation";
-import { isMysqlExecutionErrorResult } from "@/lib/query/queryResultError";
+import { isQueryExecutionErrorResult } from "@/lib/query/queryResultError";
 import { decodeQueryResultArchive, encodeQueryResultArchive, type DecodedQueryResultArchive } from "@/lib/query/queryResultArchive";
 import * as api from "@/lib/backend/api";
 import { useConnectionStore } from "@/stores/connectionStore";
@@ -3472,7 +3472,7 @@ export const useQueryStore = defineStore("query", () => {
           current.results[activeGroupIndex] = results[0];
           current.result = results[0];
         } else if (results.length > 1) {
-          const errorResultIndex = results.findIndex((result) => isMysqlExecutionErrorResult(result, conn?.db_type));
+          const errorResultIndex = results.findIndex((result) => isQueryExecutionErrorResult(result));
           const activeResultIndex = results.findIndex((result) => result.columns.length > 0);
           const resultIndex = errorResultIndex >= 0 ? errorResultIndex : (preservedResultIndex(results, current.activeResultIndex, options?.preserveActiveResultIndex) ?? (activeResultIndex >= 0 ? activeResultIndex : 0));
           current.results = results;
@@ -4406,6 +4406,10 @@ export const useQueryStore = defineStore("query", () => {
     if (!effectiveDbType) return undefined;
     const useAgentCursor = usesAgentCursorForQuery(conn?.db_type);
     const queryBaseSql = queryResultBaseSql(tab);
+    const resultStatementIndex = tab.result.statement_index;
+    const batchSql = tab.resultBaseSql ?? tab.lastExecutedSql ?? tab.sql;
+    const batchStatements = effectiveDbType === "postgres" && tab.result.truncated === true && Number.isInteger(resultStatementIndex) && resultStatementIndex! > 0 ? splitSqlStatementRanges(batchSql, effectiveDbType) : [];
+    const setupSql = batchStatements[resultStatementIndex!]?.sql === tab.result.sourceStatement ? batchStatements.slice(0, resultStatementIndex).map((statement) => statement.sql) : undefined;
     const rowLimit = settings.exportRowLimitEnabled ? settings.exportRowLimit : null;
     const totalRows = typeof tab.resultTotalRowCount === "number" ? (rowLimit === null ? tab.resultTotalRowCount : Math.min(tab.resultTotalRowCount, rowLimit)) : null;
     const clientSessionId = tabClientSessionId(tab, "export");
@@ -4417,6 +4421,7 @@ export const useQueryStore = defineStore("query", () => {
       schema: tab.schema,
       sql,
       queryBaseSql,
+      setupSql,
       databaseType: effectiveDbType,
       useAgentCursor,
       filePath: options.filePath,
