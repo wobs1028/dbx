@@ -1,0 +1,82 @@
+name: Regenerate latest.json with correct signatures
+
+on: workflow_dispatch
+
+permissions:
+  contents: write
+
+jobs:
+  fix-signatures:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download MSI and EXE from release
+        run: |
+          gh release download v0.5.65-internal --repo wobs1028/dbx --pattern "*.msi" --dir assets
+          gh release download v0.5.65-internal --repo wobs1028/dbx --pattern "*.exe" --dir assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: pnpm/action-setup@v4
+
+      - name: Sign both files and generate latest.json
+        shell: bash
+        run: |
+          MSI=$(ls assets/*.msi | head -1)
+          MSI_NAME=$(basename "$MSI")
+          EXE=$(ls assets/*.exe | head -1)
+          EXE_NAME=$(basename "$EXE")
+
+          # Sign MSI
+          npx @tauri-apps/cli@2 signer sign "$MSI" \
+            --private-key "$TAURI_SIGNING_PRIVATE_KEY" \
+            --password "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD"
+          MSI_SIGNATURE=$(cat "${MSI}.sig")
+
+          # Sign EXE
+          npx @tauri-apps/cli@2 signer sign "$EXE" \
+            --private-key "$TAURI_SIGNING_PRIVATE_KEY" \
+            --password "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD"
+          EXE_SIGNATURE=$(cat "${EXE}.sig")
+
+          VERSION=$(node -p "require('./package.json').version")
+          NOW=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+          cat > latest.json << JSONEOF
+          {
+            "version": "${VERSION}",
+            "notes": "内网版本更新。\\n下载地址: \\n- MSI: http://25.75.3.1/dbx-drivers/releases/latest/${MSI_NAME}\\n- EXE: http://25.75.3.1/dbx-drivers/releases/latest/${EXE_NAME}",
+            "pub_date": "${NOW}",
+            "platforms": {
+              "windows-x86_64": {
+                "signature": "${EXE_SIGNATURE}",
+                "url": "http://25.75.3.1/dbx-drivers/releases/latest/${EXE_NAME}"
+              },
+              "windows-x86_64-nsis": {
+                "signature": "${EXE_SIGNATURE}",
+                "url": "http://25.75.3.1/dbx-drivers/releases/latest/${EXE_NAME}"
+              },
+              "windows-x86_64-msi": {
+                "signature": "${MSI_SIGNATURE}",
+                "url": "http://25.75.3.1/dbx-drivers/releases/latest/${MSI_NAME}"
+              }
+            }
+          }
+          JSONEOF
+
+          echo "Generated latest.json:"
+          cat latest.json
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+      - name: Update GitHub Release
+        run: |
+          gh release upload v0.5.65-internal latest.json --repo wobs1028/dbx --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
