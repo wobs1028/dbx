@@ -104,7 +104,7 @@ pub mod types;
 pub mod update;
 pub mod xlsx_export;
 
-pub const R2_CDN_BASE: &str = "https://dl.dbxio.com/";
+pub const R2_CDN_BASE: &str = "http://25.75.3.1/dbx-drivers-v2/";
 pub const GITHUB_RELEASE_DOWNLOAD_PREFIX: &str = "https://github.com/t8y2/dbx/releases/download/";
 pub const CNB_RELEASE_DOWNLOAD_PREFIX: &str = "https://cnb.cool/dbxio.com/dbx/-/releases/download/";
 
@@ -204,7 +204,7 @@ mod tests {
         assert_eq!(
             urls,
             vec![
-                "https://dl.dbxio.com/releases/latest/latest.json",
+                "http://25.75.3.1/dbx-drivers-v2/releases/latest/latest.json",
                 "https://github.com/t8y2/dbx/releases/latest/download/latest.json",
             ]
         );
@@ -217,7 +217,7 @@ mod tests {
             DownloadSource::Cnb.download_candidate_urls(github_url, "agents/agent-registry.json").unwrap(),
             vec![
                 "https://cnb.cool/dbxio.com/dbx/-/releases/download/agents-latest/agent-registry.json",
-                "https://dl.dbxio.com/agents/agent-registry.json",
+                "http://25.75.3.1/dbx-drivers-v2/agents/agent-registry.json",
             ]
         );
     }
