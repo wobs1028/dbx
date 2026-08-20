@@ -289,6 +289,8 @@ server {
 6. **测试断言编译失败**：改了 `R2_CDN_BASE` 后，lib.rs 和 update.rs 里的测试硬编码 URL 必须同步改。
 7. **老用户收不到升级**：老路径 `releases/latest/latest.json` 必须更新指向新版，否则老用户永远停在旧版。
 8. **驱动装不上但 registry 正常**：确认服务器文件名与 registry URL 完全一致（含版本号），nginx `autoindex on` 时可直接浏览核对。
+9. **⚠️ File 2 的 `dangerousInsecureTransportProtocol: true` 一行不许丢**：内网 updater endpoint 是 `http://`，Tauri updater 插件 release 构建只允许 https，缺这行 → 应用启动即 panic 闪退（v0.5.88 升级踩过）。改 tauri.conf.json 时整个 updater block 一起复制，别只替换 pubkey/endpoints。
+10. **坏版用户无法自动升级**：启动即崩的应用跑不了更新检查，只能手动装修复版。发布前先在本地 `cargo check` + 检查 tauri.conf.json 三个字段齐全（pubkey / endpoints / dangerousInsecureTransportProtocol）。
 
 ---
 
@@ -302,8 +304,8 @@ server {
 | 内网分支 | `internal-build`（6 文件改动，force push） |
 | 内网文件服务器 | `http://25.75.3.1/`，root 含 `dbx-drivers/`（老）与 `dbx-drivers-v2/`（新） |
 | CI 入口 | `wobs1028/dbx` → Actions → `build-windows.yml` → Run workflow → `internal-build` |
-| 当前基线 | 上游 v0.5.88 / agents-v0.2.87 / 内网 v0.5.88 构建中 |
-| 当前 internal-build commit | `a4d4b545d feat: internal build for v0.5.88 (v2 driver path)` |
+| 当前基线 | 上游 v0.5.88 / agents-v0.2.87 / 内网 v0.5.88 修复版（构建中） |
+| 当前 internal-build commit | `a4d4b545d feat: internal build for v0.5.88 (v2 driver path)`（+ 后续 updater 修复 commit） |
 
 ---
 
